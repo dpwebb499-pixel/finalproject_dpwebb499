@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MMA QuickSearch & Tapology Deep Analyzer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; margin: 16px; }
+    header { display:flex; gap:12px; align-items:center; margin-bottom:12px; }
+    input, button { padding:8px; font-size:14px; }
+    #results { margin-top:16px; display:flex; gap:18px; flex-wrap:wrap; }
+    #stats, #chartCard { background:#f7f7f7; padding:12px; border-radius:8px; min-width:320px; max-width:720px; }
+    .small { font-size:13px; color:#444; }
+    table { width:100%; border-collapse:collapse; margin-top:8px; }
+    th,td { padding:6px; text-align:left; border-bottom:1px solid #ddd; font-size:13px; }
+    .note { font-size:12px; color:#666; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="fight_stat_homepage.html">Home</a>
+    <a href="submission_stats.html">submission stats</a>
+    <a href="questions_to_solve.html">questions to solve</a>
+  </nav>  
+    
+  <header>
+    <h2 style="margin:0">MMA Fighter Deep Analyzer (Paste Tapology Link)</h2>
+    <div class="small">Paste a Tapology fighter profile link (e.g. https://www.tapology.com/fightcenter/fighters/conor-mcgregor-notorious) and press Search. Full advanced stats will be gathered and computed.</div>
+  </header>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input id="tapologyUrlInput" placeholder="Paste Tapology profile URL..." style="min-width:360px" />
+    <button id="searchBtn">Search</button>
+    <span class="small" id="progressText"></span>
+  </div>
+  <div class="note">
+    This version parses data directly from the Tapology link you paste, then fetches and analyzes opponent records for pre-UFC fights. This will take time if there are many opponents!
+  </div>
+  <div id="results">
+    <div id="stats">
+      <h3 style="margin-top:0">Fighter Snapshot</h3>
+      <div id="fighterName" style="font-weight:600">—</div>
+      <div id="basicRecord" class="small">Record: —</div>
+      <table id="detailTable" aria-live="polite">
+        <tbody>
+          <tr><th>First pro fight</th><td id="firstPro">—</td></tr>
+          <tr><th>Year entered UFC</th><td id="ufcEntry">—</td></tr>
+          <tr><th>Fights before UFC</th><td id="preUfcFights">—</td></tr>
+          <tr><th>Record before UFC</th><td id="preUfcRecord">—</td></tr>
+          <tr><th>Combined opponents' pre-UFC W-L</th><td id="opponentsCombined">—</td></tr>
+          <tr><th>UFC fights before leaving</th><td id="ufcFightsBeforeLeaving">—</td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:10px">
+        <button id="showRaw">Show raw result (toggle)</button>
+        <pre id="rawOut" style="display:none; max-height:240px; overflow:auto; background:#111; color:#eee; padding:8px; border-radius:6px"></pre>
+      </div>
+    </div>
+    <div id="chartCard">
+      <h3 style="margin-top:0">Chart & Rolling Averages</h3>
+      <canvas id="statChart" width="600" height="320"></canvas>
+      <div class="small note" id="averagesNote"></div>
+      <div style="margin-top:8px">
+        <button id="resetAverages">Reset saved averages</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+function $(id){ return document.getElementById(id); }
+function prettyDate(d){ return d ? new Date(d).toISOString().slice(0,10) : '—' }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); } // polite delay for proxies
+
+const STORAGE_KEY = 'mma_analyzer_averages_v1';
+function loadAverages(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { searches:0, stats: {} }; } catch(e){ return {searches:0, stats:{}}; } }
+function saveAverages(obj){ localStorage.setItem(STORAGE_KEY, JSON.stringify(obj)); }
+function resetAverages(){ localStorage.removeItem(STORAGE_KEY); averages = loadAverages(); updateAveragesUI(); }
+
+let averages = loadAverages();
+
+const ctx = $('statChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: ['Pre-UFC Wins','Pre-UFC Losses','UFC Fights','Opponents Pre-UFC Wins','Opponents Pre-UFC Losses'],
+    datasets: [{
+      label: 'Last Search',
+      data: [0,0,0,0,0],
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: { y: { beginAtZero:true } }
+  }
+});
+
+function updateChart(vals){
+  chart.data.datasets[0].data = vals;
+  chart.update();
+}
+
+function updateAveragesUI(){
+  const avg = averages;
+  if(avg.searches === 0){
+    $('averagesNote').textContent = 'No saved averages yet — start searching to build rolling averages.';
+    return;
+  }
+  const parts = [];
+  for(const k in avg.stats){
+    const s = avg.stats[k];
+    parts.push(`${k}: ${ (s.total / avg.searches).toFixed(2) } (avg)`);
+  }
+  $('averagesNote').textContent = `Saved over ${avg.searches} searches — averages → ${parts.join(' • ')}`;
+}
+updateAveragesUI();
+
+$('searchBtn').addEventListener('click', runTapologySearch);
+$('showRaw').addEventListener('click', ()=> { const p=$('rawOut'); p.style.display = p.style.display === 'none' ? 'block' : 'none'; });
+$('resetAverages').addEventListener('click', ()=> {
+  if(confirm('Reset all saved averages?')) resetAverages();
+});
+
+async function runTapologySearch(){
+  const url = $('tapologyUrlInput').value.trim();
+  if(!url || !/^https:\/\/www\.tapology\.com\/fightcenter\/fighters\//.test(url)){
+    alert('Paste a valid Tapology fighter profile URL first!');
+    return;
+  }
+  $('fighterName').textContent = 'Searching...';
+  $('basicRecord').textContent = '';
+  $('rawOut').textContent = '';
+  $('rawOut').style.display = 'none';
+  $('progressText').textContent = '';
+
+  try {
+    // Use CORS proxy for browser fetch
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const resp = await fetch(proxyUrl);
+    const data = await resp.json();
+    const html = data.contents;
+
+    // Parse Tapology HTML (full fight history, UFC, record, etc.)
+    const fighter = await parseTapologyDeep(html);
+
+    fighter.profileUrl = url;
+    $('rawOut').textContent = JSON.stringify(fighter, null, 2);
+
+    displayBasic(fighter);
+    applyAnalysisToUI(fighter);
+
+    // Chart & rolling averages
+    const vals = [
+      fighter.preUfcWins || 0,
+      fighter.preUfcLosses || 0,
+      fighter.totalUfcFights || 0,
+      fighter.opponentsPreUfcWins || 0,
+      fighter.opponentsPreUfcLosses || 0
+    ];
+    updateChart(vals);
+    updateRollingAverages({
+      preUfcWins: fighter.preUfcWins || 0,
+      preUfcLosses: fighter.preUfcLosses || 0,
+      ufcFights: fighter.totalUfcFights || 0,
+      opponentsPreUfcWins: fighter.opponentsPreUfcWins || 0,
+      opponentsPreUfcLosses: fighter.opponentsPreUfcLosses || 0
+    });
+
+    $('progressText').textContent = '';
+
+  } catch(e){
+    $('fighterName').textContent = '—';
+    $('progressText').textContent = '';
+    alert('Failed to fetch or parse Tapology profile. Try again or another fighter.');
+  }
+}
+
+// Deep Tapology HTML parser: parses fight history and fetches opponent records
+async function parseTapologyDeep(html){
+  // Name
+  let nameMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/);
+  let name = nameMatch ? nameMatch[1].trim() : 'Unknown';
+
+  // Record: "Record: 22-6-0"
+  let recordMatch = html.match(/Record:\s([0-9]+)-([0-9]+)(?:-([0-9]+))?/);
+  let wins = recordMatch ? parseInt(recordMatch[1]) : null;
+  let losses = recordMatch ? parseInt(recordMatch[2]) : null;
+  let draws = recordMatch && recordMatch[3] ? parseInt(recordMatch[3]) : 0;
+
+  // Pro Debut: "Pro Debut: March 9, 2008"
+  let debutMatch = html.match(/Pro Debut:<\/strong>\s*([A-Za-z]+\s+[0-9]{1,2},\s+[0-9]{4})/);
+  let firstProDate = debutMatch ? new Date(debutMatch[1]).toISOString().slice(0,10) : null;
+  let firstProYear = debutMatch ? new Date(debutMatch[1]).getFullYear() : null;
+
+  // Parse fight table
+  let fightTableHtml = html.match(/<table[^>]*class="fight history"[^>]*>([\s\S]+?)<\/table>/);
+  if(!fightTableHtml) fightTableHtml = html.match(/<table[^>]*class="fight"[^>]*>([\s\S]+?)<\/table>/);
+  let fightRows = [];
+  if(fightTableHtml){
+    // Split into rows
+    fightRows = fightTableHtml[1].match(/<tr[^>]*>([\s\S]+?)<\/tr>/g) || [];
+  }
+
+  // Gather fight objects
+  let fights = [];
+  for(let row of fightRows){
+    let dateMatch = row.match(/<td class="date">([A-Za-z]+\s+\d{1,2},\s+\d{4})<\/td>/);
+    let opponentMatch = row.match(/<td class="opponent">(?:<a href="([^"]+)"[^>]*>)?([^<]+)(?:<\/a>)?<\/td>/);
+    let resultWin = row.match(/<td class="result win">Win<\/td>/);
+    let resultLoss = row.match(/<td class="result loss">Loss<\/td>/);
+    let resultDraw = row.match(/<td class="result draw">Draw<\/td>/);
+    let promotionMatch = row.match(/<td class="event">(?:<a[^>]*>)?([^<]+)(?:<\/a>)?<\/td>/);
+    let fightDate = dateMatch ? new Date(dateMatch[1]) : null;
+    let opponentUrl = opponentMatch && opponentMatch[1] ? "https://www.tapology.com" + opponentMatch[1] : null;
+    let opponentName = opponentMatch ? opponentMatch[2].trim() : null;
+    let result = resultWin ? "win" : resultLoss ? "loss" : resultDraw ? "draw" : null;
+    let promotion = promotionMatch ? promotionMatch[1].trim() : null;
+    fights.push({
+      date: fightDate,
+      opponentName,
+      opponentUrl,
+      result,
+      promotion
+    });
+  }
+
+  // Find UFC fights and entry date
+  let ufcFights = fights.filter(f=>f.promotion && /ufc/i.test(f.promotion));
+  let yearEnteredUFC = ufcFights.length ? ufcFights[ufcFights.length-1].date.getFullYear() : null;
+  let totalUfcFights = ufcFights.length;
+
+  // Pre-UFC fights
+  let firstUfcDate = ufcFights.length ? ufcFights[ufcFights.length-1].date : null;
+  let preUfcFightsArr = firstUfcDate
+    ? fights.filter(f=>f.date && f.date < firstUfcDate)
+    : fights.filter(f=>f.promotion && !/ufc/i.test(f.promotion));
+  let preUfcFights = preUfcFightsArr.length;
+  let preUfcWins = preUfcFightsArr.filter(f=>f.result === "win").length;
+  let preUfcLosses = preUfcFightsArr.filter(f=>f.result === "loss").length;
+  let preUfcDraws = preUfcFightsArr.filter(f=>f.result === "draw").length;
+
+  // Opponents' pre-UFC W/L
+  let opponentsPreUfcWins = 0, opponentsPreUfcLosses = 0;
+  let uniqueOpponents = {};
+  for(let f of preUfcFightsArr){
+    if(f.opponentUrl && f.opponentName){
+      uniqueOpponents[f.opponentUrl] = {name: f.opponentName, fightDate: f.date};
+    }
+  }
+  let oppUrls = Object.keys(uniqueOpponents);
+
+  // Throttle requests and show progress
+  let processed = 0;
+  for(let oppUrl of oppUrls){
+    $('progressText').textContent = `Fetching opponent ${processed+1}/${oppUrls.length}...`;
+    try {
+      let oppHtml = await fetchViaProxy(oppUrl);
+      let oppFights = parseTapologyOpponentHistory(oppHtml, uniqueOpponents[oppUrl].fightDate);
+      opponentsPreUfcWins += oppFights.wins;
+      opponentsPreUfcLosses += oppFights.losses;
+      await sleep(800); // polite delay for proxy
+    } catch(err){
+      // Ignore failed opponent fetch
+    }
+    processed++;
+  }
+
+  $('progressText').textContent = '';
+
+  return {
+    name,
+    record: { wins, losses, draws, nc: null },
+    firstProDate,
+    firstProYear,
+    yearEnteredUFC,
+    preUfcFights,
+    preUfcWins,
+    preUfcLosses,
+    preUfcDraws,
+    opponentsPreUfcWins,
+    opponentsPreUfcLosses,
+    totalUfcFights
+  };
+}
+
+// CORS proxy fetch helper
+async function fetchViaProxy(url){
+  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+  const resp = await fetch(proxyUrl);
+  const data = await resp.json();
+  return data.contents;
+}
+
+// Parse opponent fight history up to fight date
+function parseTapologyOpponentHistory(html, fightDate){
+  // Parse fight rows
+  let fightTableHtml = html.match(/<table[^>]*class="fight history"[^>]*>([\s\S]+?)<\/table>/);
+  if(!fightTableHtml) fightTableHtml = html.match(/<table[^>]*class="fight"[^>]*>([\s\S]+?)<\/table>/);
+  let fightRows = [];
+  if(fightTableHtml){
+    fightRows = fightTableHtml[1].match(/<tr[^>]*>([\s\S]+?)<\/tr>/g) || [];
+  }
+  let wins = 0, losses = 0;
+  for(let row of fightRows){
+    let dateMatch = row.match(/<td class="date">([A-Za-z]+\s+\d{1,2},\s+\d{4})<\/td>/);
+    let resultWin = row.match(/<td class="result win">Win<\/td>/);
+    let resultLoss = row.match(/<td class="result loss">Loss<\/td>/);
+    let fDate = dateMatch ? new Date(dateMatch[1]) : null;
+    if(fDate && fDate < fightDate){
+      if(resultWin) wins++;
+      if(resultLoss) losses++;
+    }
+  }
+  return { wins, losses };
+}
+
+function displayBasic(profile){
+  $('fighterName').textContent = profile.name || 'Unknown';
+  const r = profile.record || {};
+  const recStr = (typeof r.wins === 'number' ? r.wins : '?') + '-' + (typeof r.losses === 'number' ? r.losses : '?') + (r.draws ? '-' + r.draws : '');
+  $('basicRecord').textContent = 'Record: ' + recStr;
+}
+
+function applyAnalysisToUI(a){
+  $('firstPro').textContent = a.firstProDate ? prettyDate(a.firstProDate) : 'Unknown';
+  $('ufcEntry').textContent = a.yearEnteredUFC || 'Unknown';
+  $('preUfcFights').textContent = a.preUfcFights !== null ? a.preUfcFights : '—';
+  $('preUfcRecord').textContent = (a.preUfcWins !== null ? a.preUfcWins : '—') + ' - ' + (a.preUfcLosses !== null ? a.preUfcLosses : '—') + (a.preUfcDraws ? ` (D:${a.preUfcDraws})` : '');
+  $('opponentsCombined').textContent = (a.opponentsPreUfcWins !== null ? a.opponentsPreUfcWins : '—') + ' W / ' + (a.opponentsPreUfcLosses !== null ? a.opponentsPreUfcLosses : '—') + ' L';
+  $('ufcFightsBeforeLeaving').textContent = a.totalUfcFights !== null ? a.totalUfcFights : '—';
+}
+
+function updateRollingAverages(newStats){
+  averages.searches = (averages.searches || 0) + 1;
+  averages.stats = averages.stats || {};
+  for(const k in newStats){
+    averages.stats[k] = averages.stats[k] || { total: 0 };
+    averages.stats[k].total = (averages.stats[k].total || 0) + (newStats[k] || 0);
+  }
+  saveAverages(averages);
+  updateAveragesUI();
+}
+</script>
+</body>
+</html>

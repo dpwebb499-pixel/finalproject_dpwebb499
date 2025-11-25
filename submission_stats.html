@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>submission stats</title>
+  <link rel="stylesheet" href="submission-stats-stylesheet.css">
+</head>
+<body>
+  <h1>Submission Stats</h1>
+
+ <h2>What is known so far</h2>
+
+ <p>When it comes to statistacal or numerical data on submissions in MMA or in BJJ
+  there is not a lot of information that is easily accessible. There are some graphs
+  and charts that have been made by various people and organizations that give some
+  insight into the world of submissions. Below are some of the more informative graphs
+  that I have found on the internet.
+ </p>
+
+  <p>Submission Graphs</p>
+
+  <table>
+    <tr>
+      <td>
+        <figure>
+          <img src="media/most common submssions in the UFC.png" alt="Graph 1 - Most common submissions in the UFC">
+          <figcaption>Graph 1 <a href="https://www.instagram.com/p/C9s1kTQygw-/?img_index=1">source</a></figcaption>
+        </figure>
+      </td>
+      <td>
+        <figure>
+          <img src="media/MostPopularUFCSubmissionsofAllTime.png" alt="Graph 2 - Most popular UFC submissions of all time">
+          <figcaption>Graph 2 <a href="https://www.strengthfighter.com/most-popular-ufc-submissions-of-all-time/">source</a></figcaption>
+        </figure>
+      </td>
+      <td>
+        <figure>
+          <img src="media/UFCSubsbyBJJHeroes.png" alt="Graph 3 - UFC submissions by BJJ Heroes">
+          <figcaption>Graph 3 <a href="https://www.bjjheroes.com/editorial/ufc-submissions-by-the-numbers-2017">source</a></figcaption>
+        </figure>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <figure>
+          <img src="media/every choke finish in the UFC.png" alt="Graph 4 - Every choke finish in the UFC">
+          <figcaption>Graph 4 <a href="https://www.instagram.com/p/C5gwUH5vb9w/?img_index=1">source</a></figcaption>
+        </figure>
+      </td>
+      <td>
+        <figure>
+          <img src="media/adcc 2024 submission numbers.png" alt="Graph 5 - ADCC 2024 submission numbers">
+          <figcaption>Graph 5 <a href="https://www.instagram.com/p/C_GX3tLP2wf/">source</a></figcaption>
+        </figure>
+      </td>
+      <td>
+        <figure>
+          <img src="media/submission-table.png" alt="Graph 6 - submission-table">
+          <figcaption>Graph 6 <a href="https://www.reddit.com/r/MMA/comments/1dvxtqg/table_on_the_most_common_submissions_in_ufc/">source</a></figcaption>
+        </figure>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <figure>
+          <img src="media/sub_frequency_each_decade.png" alt="Graph 7 - sub_frequency_each_decade">
+          <figcaption>Graph 8 <a href="https://x.com/NateLatshaw/status/1809966854351290516/photo/1">source</a></figcaption>
+        </figure>
+      </td>
+      <td>
+        <figure>
+          
+        </figure>
+      </td>
+      <td></td>
+  </table>
+
+<p>Regardless of the legitmacy of each graph they all have simliar trends
+  with the rear naked choke being the most common submission in MMA and
+  the triangle choke and armbar being the next most common submissions.
+  The guillotine and kimura are also fairly common submissions but not
+  as common as the other three. Even the ADCC chart shows similar trends
+  to the others despite being a BJJ chart. Overall there is not a lot of data on submissions in MMA or BJJ but the data that is
+  available shows some interesting trends on atleast what subissions have ended the most fights.
+</p>
+<p> However the main goal of the Submssion Stats page is to find trends that are not easily accessible.
+  While these graphs can give some insight into the world of submissions there are still some things missing.
+  For example none of the graphs say which round the submission happened in or how long the fight lasted before the submission.
+  Nor do they list the amount of control time the fighter had before going for the submission.
+  This is important information because it can give some insight into the strategy of when to go for a submission.
+</p>
+
+  <!-- Modal -->
+  <div id="imgModal" class="modal">
+    <span class="close">&times;</span>
+    <img class="modal-content" id="expandedImg">
+    <div id="caption"></div>
+  </div>
+
+  <nav>
+    <a href="fight_stat_homepage.html">Home</a> |
+    <a href="fighter_record_stats.html">fighter record stats</a> |
+    <a href="questions_to_solve.html">questions to solve</a>
+  </nav>
+
+  <script>
+    // Modal logic
+    var modal = document.getElementById("imgModal");
+    var modalImg = document.getElementById("expandedImg");
+    var captionText = document.getElementById("caption");
+    var closeBtn = document.getElementsByClassName("close")[0];
+
+    document.querySelectorAll("img").forEach(function(img) {
+      img.addEventListener("click", function() {
+        modal.style.display = "block";
+        modalImg.src = this.src;
+        captionText.innerHTML = this.alt;
+      });
+    });
+
+    closeBtn.onclick = function() {
+      modal.style.display = "none";
+    }
+
+    modal.onclick = function(e) {
+      if (e.target === modal) {
+        modal.style.display = "none";
+      }
+    }
+  </script>
+</body>
+</html>

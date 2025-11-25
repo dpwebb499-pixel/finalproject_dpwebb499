@@ -1,0 +1,13 @@
+/* General page styles */
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  line-height: 1.6;
+
+}
+/* headings centered */
+h1 {
+  text-align: center;
+  margin-top: 20px;
+}
+
